@@ -89,6 +89,33 @@ Subjects, actions, resources, permissions, roles with hierarchy, attribute rules
 
 ---
 
+### 5.1 Where the subject's data comes from (never the client)
+
+gate-sec is storage-free, but it never decides from data the client supplied. The chain:
+
+```
+login (gate-net) ─▶ users core loads roles and attributes from the auth store
+                 ─▶ snapshot written into the server-side session record (memory, backed by the durable store)
+request          ─▶ gate-net verifies the token against that record, checks the account epoch
+                 ─▶ gate-sec receives a reference to the snapshot (no copy, no database hit)
+```
+
+| Event | Effect | Cost |
+|---|---|---|
+| role or permission granted or removed | account epoch bumped; every cached session record of that account is stale on its next use and reloaded | one epoch write; one reload per live session of that account |
+| role definition changed (a permission added to "editor") | policy version bumped; compiled policy swapped atomically; snapshots hold role ids, so no session reload is needed | one recompile, no request blocked |
+| account suspended | explicit deny plus session revocation through gate-net and bouncer-io | immediate |
+
+| Path | Cost (estimate) |
+|---|---|
+| route check, role-only | under 50 ns (bitset test) |
+| object check with attribute rules | under 200 ns p99 |
+| subject reload after an epoch bump | the auth store's read latency, once per session |
+
+The client's cookie carries a random token only; roles are never read from it. See `gate-net/dev/SESSIONS.md`.
+
+James has an idea for how authorization data is fetched and held (2026-10-13); it is recorded here when designed.
+
 ## 6. Policy
 
 - **Deny by default.** No grant, no access. An action nobody declared is unreachable.
@@ -229,3 +256,4 @@ No runtime dependencies are needed for the core.
 | D-003 | 2026-10-13 | Object-level checks are a first-class API | the most common real-world access-control flaw |
 | D-004 | 2026-10-13 | Storage-free: callers pass loaded attributes | no database dependency; testable in isolation |
 | D-005 | 2026-10-13 | Roles compiled to bitsets | role decisions in a few word operations |
+| D-006 | 2026-10-13 | Subject data comes only from the server-side session record, invalidated by account epoch; never from client-supplied data | authorization must not trust the client; epochs make role changes immediate without a database hit per request |
