@@ -11,6 +11,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `dev/PLAN.md` section 5.1: where the subject's roles and attributes come
+  from (the server-side session record, never the client), how role and
+  policy changes invalidate them, and what each path costs. Decision D-006.
+
 ---
 
 ## [0.1.0] - 2026-10-13
